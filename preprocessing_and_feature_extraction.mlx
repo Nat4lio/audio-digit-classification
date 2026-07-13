@@ -1,0 +1,346 @@
+%% João Natálio 2023205576 ATD - META 1 (2026)
+%% Gonçalo Costa 2023213664 ATD - META 1 (2026)
+
+% [1] Criar estrutura de dados 
+ficheiros = 'C:/Users/jaana/Desktop/UNI/ProjetoATD/15';  
+ficheiros_audio = dir(fullfile(ficheiros, '*.wav'));
+
+tabela_audio = table([], [], [], [], [], [], [], 'VariableNames', ...
+    {'Diretorio', 'NomeFicheiro', 'Participante', 'Digito', 'Repeticao', 'TaxaAmostragem', 'Sinal'});
+
+% [2] Importação dos sinais de áudio
+for i = 1:length(ficheiros_audio)
+    nome_ficheiro = ficheiros_audio(i).name;
+    caminho_ficheiro = fullfile(ficheiros, nome_ficheiro);
+    
+    % Informações do nome 
+    numeros = regexp(nome_ficheiro, '\d+', 'match'); 
+    digito = str2double(numeros{1});
+    participante = str2double(numeros{2});
+    repeticao = str2double(numeros{3});
+    
+    % Ler o sinal de áudio e a taxa de amostragem
+    [sinal, taxa_amostragem] = audioread(caminho_ficheiro); 
+    
+    % Guardar os dados na nova linha
+    nova_linha = {caminho_ficheiro, nome_ficheiro, participante, digito, repeticao, taxa_amostragem, sinal};
+    tabela_audio = [tabela_audio; nova_linha];
+end
+
+% [3] Representação gráfica dos sinais originais
+r = 5; % Número da repetição
+dados_filtrados = tabela_audio(tabela_audio.Repeticao == r, :);
+fig = figure('Name', sprintf('Sinais Originais - Repetição %d', r), 'NumberTitle', 'off');
+for i = 1:height(dados_filtrados)
+    sinal_exemplo = dados_filtrados.Sinal{i};
+    taxa_exemplo = dados_filtrados.TaxaAmostragem(i);
+    digito_exemplo = dados_filtrados.Digito(i);
+    tempo = linspace(0, length(sinal_exemplo) / taxa_exemplo, length(sinal_exemplo));
+    
+    subplot(5, 2, i);
+    plot(tempo, sinal_exemplo, 'b', 'LineWidth', 1.5);
+    xlabel('Tempo (s)'); ylabel('Amplitude');
+    title(sprintf('Dígito %d - Original', digito_exemplo));
+    grid on;
+end
+
+% [4] Pré-processamento dos sinais
+duracao_maxima = 0;
+
+% Primeiro loop: Determinar a maior duração após remover silêncio
+for i = 1:height(tabela_audio)
+    sinal = tabela_audio.Sinal{i};
+    taxa_amostragem = tabela_audio.TaxaAmostragem(i);
+    
+    janela = round(0.01 * taxa_amostragem);
+    energia = movsum(sinal.^2, janela);
+    limiar_energia = max(energia) * 0.1;
+    
+    indice_inicio = find(energia > limiar_energia, 1);
+    indice_fim = find(energia > limiar_energia, 1, 'last');
+    
+    if ~isempty(indice_fim) && ~isempty(indice_inicio)
+        duracao_atual = (indice_fim - indice_inicio + 1) / taxa_amostragem;
+        if duracao_atual > duracao_maxima
+            duracao_maxima = duracao_atual;
+        end
+    end
+end
+
+% Segundo loop: Aplicar o pré-processamento com a nova duração padrão
+for i = 1:height(tabela_audio)
+    sinal = tabela_audio.Sinal{i};
+    taxa_amostragem = tabela_audio.TaxaAmostragem(i);
+    
+    % Remover silêncio inicial
+    janela = round(0.01 * taxa_amostragem);
+    energia = movsum(sinal.^2, janela);
+    limiar_energia = max(energia) * 0.1;
+    indice_inicio = find(energia > limiar_energia, 1);
+    
+    if ~isempty(indice_inicio)
+        sinal = sinal(indice_inicio:end);
+    end
+    
+    % Normalizar amplitude 
+    if max(abs(sinal)) ~= 0
+        sinal = sinal / max(abs(sinal));
+    end
+    
+    % Padronizar a duração 
+    num_amostras = round(duracao_maxima * taxa_amostragem);
+    
+    if length(sinal) < num_amostras
+        sinal = [sinal; zeros(num_amostras - length(sinal), 1)];
+    else
+        sinal = sinal(1:num_amostras);
+    end
+    
+    % Atualizar a tabela
+    tabela_audio.Sinal{i} = sinal;
+end
+
+% [5] Representação gráfica dos sinais pré-processados
+dados_filtrados_proc = tabela_audio(tabela_audio.Repeticao == r, :);
+fig2 = figure('Name', sprintf('Sinais Pré-Processados - Repetição %d', r), 'NumberTitle', 'off');
+for i = 1:height(dados_filtrados_proc)
+    sinal_exemplo = dados_filtrados_proc.Sinal{i};
+    taxa_exemplo = dados_filtrados_proc.TaxaAmostragem(i);
+    digito_exemplo = dados_filtrados_proc.Digito(i);
+    tempo = linspace(0, length(sinal_exemplo) / taxa_exemplo, length(sinal_exemplo));
+    
+    subplot(5, 2, i);
+    plot(tempo, sinal_exemplo, 'b', 'LineWidth', 1.5);
+    xlabel('Tempo (s)'); ylabel('Amplitude');
+    title(sprintf('Dígito %d - Pós-Processado', digito_exemplo));
+    grid on;
+end
+
+% [6] Comparação visual dos gráficos
+disp('--- Comparação Visual ---');
+disp('Longos: 6, 7, 3');
+disp('Curtos: 1, 5, 8, 9');
+disp('Médios: 0, 2, 4');
+disp('Regularmente Crescente: 2, 5, 8');
+disp('Regularmente Decresecente: 1, 4, 9');
+disp('Irregulares: 0, 3, 6, 7');
+disp('Muitas Quebras: 3, 6, 7, 9');
+disp('Poucas Quebras: 1, 2, 5, 8');
+
+% [7] Cálculo das características temporais
+tabela_audio.EnergiaTotal = zeros(height(tabela_audio), 1);
+tabela_audio.AmplitudeMax = zeros(height(tabela_audio), 1);
+tabela_audio.AmplitudeMin = zeros(height(tabela_audio), 1);
+tabela_audio.DesvioPadrao = zeros(height(tabela_audio), 1);
+tabela_audio.Media = zeros(height(tabela_audio), 1);
+
+% Tabela de intervalos 
+num_intervalos = 4;
+tabela_intervalos = table([], [], [], [], [], [], [], 'VariableNames', ...
+    {'Digito', 'Intervalo', 'Energia', 'AmplitudeMax', 'AmplitudeMin', 'DesvioPadrao', 'Media'});
+
+for i = 1:height(tabela_audio)
+    sinal = tabela_audio.Sinal{i};
+    taxa_amostragem = tabela_audio.TaxaAmostragem(i);
+    digito_atual = tabela_audio.Digito(i); 
+    
+    num_amostras = length(sinal);
+    amostras_por_intervalo = floor(num_amostras / num_intervalos);
+    
+    tabela_audio.EnergiaTotal(i) = sum(sinal.^2);
+    tabela_audio.AmplitudeMax(i) = max(sinal);
+    tabela_audio.AmplitudeMin(i) = min(sinal);
+    tabela_audio.DesvioPadrao(i) = std(sinal);
+    tabela_audio.Media(i) = mean(sinal);
+    
+    for j = 1:num_intervalos
+        inicio = (j - 1) * amostras_por_intervalo + 1;
+        if j == num_intervalos
+            fim = num_amostras;
+        else
+            fim = j * amostras_por_intervalo;
+        end
+        
+        sub_sinal = sinal(inicio:fim);
+        
+        nova_linha = {digito_atual, j, sum(sub_sinal.^2), max(sub_sinal), min(sub_sinal), std(sub_sinal), mean(sub_sinal)};
+        tabela_intervalos = [tabela_intervalos; nova_linha];
+    end
+end
+
+% [8] Representação gráfica das características temporais
+figure('Name', 'Comparação 3D das Características Temporais por Intervalo', 'NumberTitle', 'off');
+
+% 1º Gráfico
+subplot(2, 3, 1);  
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.Energia, tabela_intervalos.AmplitudeMax, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Energia Total'); zlabel('Amplitude Máxima'); title('Int vs E.Total vs Amp.Max'); grid on;
+
+% 2º Gráfico
+subplot(2, 3, 2);
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.Energia, tabela_intervalos.AmplitudeMin, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Energia Total'); zlabel('Amplitude Mínima'); title('Int vs E.Total vs Amp.Min'); grid on;
+
+% 3º Gráfico
+subplot(2, 3, 3);
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.Energia, tabela_intervalos.DesvioPadrao, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Energia Total'); zlabel('Desvio Padrão'); title('Int vs E.Total vs Desvio'); grid on;
+
+% 4º Gráfico
+subplot(2, 3, 4);
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.AmplitudeMax, tabela_intervalos.AmplitudeMin, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Amplitude Máxima'); zlabel('Amplitude Mínima'); title('Int vs Amp.Max vs Amp.Min'); grid on;
+
+% 5º Gráfico
+subplot(2, 3, 5);
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.AmplitudeMax, tabela_intervalos.DesvioPadrao, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Amplitude Máxima'); zlabel('Desvio Padrão'); title('Int vs Amp.Max vs Desvio'); grid on;
+
+% 6º Gráfico
+subplot(2, 3, 6);
+scatter3(tabela_intervalos.Intervalo, tabela_intervalos.AmplitudeMin, tabela_intervalos.DesvioPadrao, 20, tabela_intervalos.Digito, 'filled');
+colormap(jet(10)); xlabel('Intervalo'); ylabel('Amplitude Mínima'); zlabel('Desvio Padrão'); title('Int vs Amp.Min vs Desvio'); grid on;
+
+% Adicionar colorbar geral à figura
+cb = colorbar('Position', [0.93 0.1 0.02 0.8]);
+cb.Label.String = 'Dígitos (0-9)';
+cb.Ticks = 0:9;
+
+disp('As 3 características temporais escolhidas são:');
+disp('- Energia Total');
+disp('- Amplitude Máxima');
+disp('- Amplitude Mínima');
+
+% [9] Cálculo dos coeficientes da série complexa de Fourier
+tabela_audio.FourierCoeficientes = cell(height(tabela_audio), 1);
+for i = 1:height(tabela_audio)
+    sinal = tabela_audio.Sinal{i};
+    N = length(sinal);
+    coeficientes_fourier = fft(sinal) / N; 
+    tabela_audio.FourierCoeficientes{i} = coeficientes_fourier;
+end
+
+% [10] Cálculo do espectro de amplitude mediano e estatísticas
+num_digitos = 10;
+espectro_mediano = cell(num_digitos, 1);
+espectro_q1 = cell(num_digitos, 1);
+espectro_q3 = cell(num_digitos, 1);
+frequencias = cell(num_digitos, 1);
+
+for digito = 0:num_digitos-1
+    sinais_digito = tabela_audio(tabela_audio.Digito == digito, :);
+    num_sinais = height(sinais_digito);
+    
+    if num_sinais > 0
+        N = length(sinais_digito.Sinal{1});
+        metade_N = floor(N/2); % Arredondar para evitar erro do zeros()
+        
+        freq = (0:metade_N-1) * (sinais_digito.TaxaAmostragem(1) / N);
+        modulos_fft = zeros(num_sinais, metade_N);
+        
+        for i = 1:num_sinais
+            coef_fft = sinais_digito.FourierCoeficientes{i};
+            modulos_fft(i, :) = abs(coef_fft(1:metade_N));
+        end
+        
+        espectro_mediano{digito+1} = median(modulos_fft, 1);
+        espectro_q1{digito+1} = quantile(modulos_fft, 0.25, 1);
+        espectro_q3{digito+1} = quantile(modulos_fft, 0.75, 1);
+        frequencias{digito+1} = freq;
+    end
+end
+
+fig3 = figure('Name', 'Comparação do Espectro de Amplitude Mediano', 'NumberTitle', 'off');
+for digito = 0:num_digitos-1
+    subplot(5, 2, digito+1);
+    freq = frequencias{digito+1};
+    spec_med = espectro_mediano{digito+1};
+    spec_q1 = espectro_q1{digito+1};
+    spec_q3 = espectro_q3{digito+1};
+    
+    hold on;
+    plot(freq, spec_med, 'g', 'LineWidth', 1);
+    plot(freq, spec_q1, 'r', 'LineWidth', 1);
+    plot(freq, spec_q3, 'b', 'LineWidth', 1);
+    hold off;
+    
+    xlim([0 8000]);
+    xlabel('Frequência (Hz)'); ylabel('Amplitude Normalizada');
+    title(sprintf('Dígito %d', digito));
+    legend('Mediana', 'Q25', 'Q75');
+    grid on;
+end
+
+% [11] Cálculo de características espectrais
+tabela_audio.FreqPico = cell(height(tabela_audio), 1);
+tabela_audio.AmpPico = cell(height(tabela_audio), 1);
+tabela_audio.MediaEspectral = cell(height(tabela_audio), 1);
+tabela_audio.EnergiaEspectral = cell(height(tabela_audio), 1);
+tabela_audio.SEF90 = cell(height(tabela_audio), 1);
+
+for i = 1:height(tabela_audio)
+    coef_fft = tabela_audio.FourierCoeficientes{i};
+    N = length(coef_fft);
+    metade_N = floor(N/2); % Arredondar
+    
+    modulo_fft = abs(coef_fft(1:metade_N)); 
+    freq = (0:metade_N-1) * (tabela_audio.TaxaAmostragem(i) / N);
+    
+    [amp_pico, idx_pico] = max(modulo_fft);
+    freq_pico = freq(idx_pico);
+    media_espectral = mean(modulo_fft);
+    energia_espectral = sum(modulo_fft.^2);
+    
+    energia_acumulada = cumsum(modulo_fft.^2);
+    sef90 = freq(find(energia_acumulada >= 0.9 * energia_acumulada(end), 1));
+    
+    tabela_audio.FreqPico{i} = freq_pico;
+    tabela_audio.AmpPico{i} = amp_pico;
+    tabela_audio.MediaEspectral{i} = media_espectral;
+    tabela_audio.EnergiaEspectral{i} = energia_espectral;
+    tabela_audio.SEF90{i} = sef90;
+end
+
+% [12] Gráficos 3D das características espectrais
+figure('Name', 'Gráficos 3D das Características Espectrais', 'NumberTitle', 'off');
+digitos_array = tabela_audio.Digito;
+
+% FreqPico vs MediaEspectral vs SEF90
+subplot(2, 2, 1);
+scatter3(cell2mat(tabela_audio.FreqPico), cell2mat(tabela_audio.MediaEspectral), cell2mat(tabela_audio.SEF90), ...
+    50, digitos_array, 'filled', 'MarkerEdgeColor', 'k');
+colormap(jet(10)); xlabel('Freq. Pico (Hz)'); ylabel('Média Espectral'); zlabel('SEF90 (Hz)'); title('FreqPico vs MediaEspectral vs SEF90'); grid on;
+
+% FreqPico vs EnergiaEspectral vs SEF90
+subplot(2, 2, 2);
+scatter3(cell2mat(tabela_audio.FreqPico), cell2mat(tabela_audio.EnergiaEspectral), cell2mat(tabela_audio.SEF90), ...
+    50, digitos_array, 'filled', 'MarkerEdgeColor', 'k');
+colormap(jet(10)); xlabel('Freq. Pico (Hz)'); ylabel('Energia Espectral'); zlabel('SEF90 (Hz)'); title('FreqPico vs EnergiaEspectral vs SEF90'); grid on;
+
+% MediaEspectral vs EnergiaEspectral vs SEF90
+subplot(2, 2, 3);
+scatter3(cell2mat(tabela_audio.MediaEspectral), cell2mat(tabela_audio.EnergiaEspectral), cell2mat(tabela_audio.SEF90), ...
+    50, digitos_array, 'filled', 'MarkerEdgeColor', 'k');
+colormap(jet(10)); xlabel('Média Espectral'); ylabel('Energia Espectral'); zlabel('SEF90 (Hz)'); title('MediaEspectral vs EnergiaEspectral vs SEF90'); grid on;
+
+% FreqPico vs MediaEspectral vs EnergiaEspectral
+subplot(2, 2, 4);
+scatter3(cell2mat(tabela_audio.FreqPico), cell2mat(tabela_audio.MediaEspectral), cell2mat(tabela_audio.EnergiaEspectral), ...
+    50, digitos_array, 'filled', 'MarkerEdgeColor', 'k');
+colormap(jet(10)); xlabel('Freq. Pico (Hz)'); ylabel('Média Espectral'); zlabel('Energia Espectral'); title('FreqPico vs MediaEspectral vs EnergiaEspectral'); grid on;
+
+% Adicionar colorbar geral à figura
+cb2 = colorbar('Position', [0.93 0.1 0.02 0.8]);
+cb2.Label.String = 'Dígitos (0-9)';
+cb2.Ticks = 0:9;
+
+sgtitle('Distribuição 3D das Características Espectrais', 'FontSize', 14);
+
+disp('As 3 características espectrais escolhidas são:');
+disp('- SEF90');
+disp('- Energia Espectral');
+disp('- Frequência de pico');
+
+% [13] Remover os sinais de áudio importados e guardar o workspace
+save('tabela_audio_features.mat', 'tabela_audio');
+disp('Processamento concluído. Tabela gravada com sucesso no ficheiro tabela_audio_features.mat!');
